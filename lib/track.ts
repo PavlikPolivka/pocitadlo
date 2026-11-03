@@ -1,5 +1,7 @@
 // Sends play events to a Google Apps Script web app (see tracking/README.md).
 // Events are queued in localStorage so nothing is lost while the iPad is offline.
+// Only the installed app (home screen) is tracked, so website visits and
+// Vercel's deploy screenshots don't count.
 
 const URL = process.env.NEXT_PUBLIC_TRACK_URL;
 const QUEUE_KEY = "pocitadlo_events";
@@ -57,8 +59,15 @@ export async function flush() {
   }
 }
 
+function isInstalledApp() {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
 export function track(event: TrackEvent) {
-  if (!URL || typeof window === "undefined") return;
+  if (!URL || typeof window === "undefined" || !isInstalledApp()) return;
   writeQueue([
     ...readQueue(),
     {
