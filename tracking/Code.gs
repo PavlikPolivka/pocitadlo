@@ -121,7 +121,13 @@ function dailyReport() {
     <p style="color:#888;font-size:12px">Verze v iPadu: ${versions.join(", ") || "?"}<br>
       <a href="${SpreadsheetApp.getActiveSpreadsheet().getUrl()}">Všechna data</a></p>`;
 
-  MailApp.sendEmail({ to: EMAILS, subject: `Počítadlo: ${finished.length} her dnes`, htmlBody: html });
+  MailApp.sendEmail({ to: EMAILS, subject: `Počítadlo: ${games_(finished.length)} dnes`, htmlBody: html });
+}
+
+function games_(n) {
+  if (n === 1) return "1 hra";
+  if (n >= 2 && n <= 4) return `${n} hry`;
+  return `${n} her`;
 }
 
 // Run once by hand to schedule the daily email.
