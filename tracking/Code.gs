@@ -3,7 +3,7 @@
 
 const EMAILS = "polivka.pavel@gmail.com, n.polivkova22@gmail.com";
 const TZ = "Europe/Prague";
-const REPORT_HOUR = 19; // daily email on the first hourly check after 19:00
+const REPORT_HOUR = 19; // daily email on the first check after 19:00 (checks run every 15 min)
 const SHEET = "events";
 const HEADER = ["received", "ts", "session", "version", "type", "level", "seconds", "mistakes", "question", "best", "wrong"];
 const TYPES = ["open", "start", "finish", "quit"];
@@ -72,30 +72,43 @@ function time_(d) {
   return Utilities.formatDate(d, TZ, "HH:mm");
 }
 
-// Runs every hour; sends today's report once, on the first run after REPORT_HOUR.
-// A missed run is caught up by the next one.
-function hourlyCheck() {
-  const now = new Date();
-  const props = PropertiesService.getScriptProperties();
-  const today = day_(now);
-  if (Number(Utilities.formatDate(now, TZ, "H")) < REPORT_HOUR) return;
-  if (props.getProperty("lastReport")?.startsWith(today)) return;
-  dailyReport();
-  props.setProperty("lastReport", `${today} ${time_(now)}`);
+// Time only for today, with the date for earlier days.
+function when_(d) {
+  return day_(d) === day_(new Date()) ? time_(d) : Utilities.formatDate(d, TZ, "d. M. HH:mm");
 }
 
-// Sends today's report now; can also be run by hand from the editor.
+// When the last scheduled report went out ("yyyy-MM-dd HH:mm" in TZ); start of today if never.
+function lastReportAt_() {
+  const last = PropertiesService.getScriptProperties().getProperty("lastReport");
+  return last
+    ? Utilities.parseDate(last, TZ, "yyyy-MM-dd HH:mm")
+    : Utilities.parseDate(day_(new Date()), TZ, "yyyy-MM-dd");
+}
+
+// Runs every 15 minutes; sends the report once a day, on the first run after
+// REPORT_HOUR that has something to report. A missed run is caught up by the next one.
+function check() {
+  const now = new Date();
+  const props = PropertiesService.getScriptProperties();
+  if (Number(Utilities.formatDate(now, TZ, "H")) < REPORT_HOUR) return;
+  if (props.getProperty("lastReport")?.startsWith(day_(now))) return;
+  if (dailyReport()) props.setProperty("lastReport", Utilities.formatDate(now, TZ, "yyyy-MM-dd HH:mm"));
+}
+
+// Emails everything received since the last scheduled report, so games played
+// after an evening email show up in the next one. Returns whether it sent.
+// Running it by hand previews the next report without moving the mark.
 function dailyReport() {
-  const today = day_(new Date());
+  const since = lastReportAt_();
   const values = getSheet_().getDataRange().getValues().slice(1);
   const events = values
     .map((r) => Object.fromEntries(HEADER.map((h, i) => [h, r[i]])))
-    .filter((ev) => ev.ts instanceof Date && day_(ev.ts) === today)
+    .filter((ev) => ev.ts instanceof Date && ev.received instanceof Date && ev.received >= since)
     // Website visits and deploy screenshots, not the installed app (see lib/track.ts).
     .filter((ev) => !String(ev.session).startsWith("web-"))
     .sort((a, b) => a.ts - b.ts);
 
-  if (events.length === 0) return; // no email on days she didn't play
+  if (events.length === 0) return false; // no email on days she didn't play
 
   const opens = events.filter((e) => e.type === "open").length;
   const finished = events.filter((e) => e.type === "finish");
@@ -120,8 +133,8 @@ function dailyReport() {
       const lvl = LEVEL_NAMES[e.level] || e.level;
       if (e.type === "start") return "";
       if (e.type === "finish")
-        return `<li>${time_(e.ts)} ✅ ${lvl}: ${e.seconds} s, chyby ${e.mistakes}${e.best === "yes" ? " 🏆 rekord" : ""}${e.wrong ? ` <span style="color:#888">(${e.wrong})</span>` : ""}</li>`;
-      return `<li>${time_(e.ts)} ✖️ ${lvl}: odešla u příkladu ${e.question}/10 po ${e.seconds} s</li>`;
+        return `<li>${when_(e.ts)} ✅ ${lvl}: ${e.seconds} s, chyby ${e.mistakes}${e.best === "yes" ? " 🏆 rekord" : ""}${e.wrong ? ` <span style="color:#888">(${e.wrong})</span>` : ""}</li>`;
+      return `<li>${when_(e.ts)} ✖️ ${lvl}: odešla u příkladu ${e.question}/10 po ${e.seconds} s</li>`;
     })
     .join("");
 
@@ -130,14 +143,16 @@ function dailyReport() {
     <p>Spuštění aplikace: <b>${opens}</b><br>
        Dokončené hry: <b>${finished.length}</b>, nedokončené: <b>${quits.length}</b><br>
        Čas hraním: <b>${Math.round(playSeconds / 60)} min</b><br>
-       Hrála: ${time_(events[0].ts)}–${time_(events[events.length - 1].ts)}</p>
+       Hrála: ${when_(events[0].ts)}–${when_(events[events.length - 1].ts)}</p>
     ${perLevel ? `<table border="1" cellpadding="6" style="border-collapse:collapse">
       <tr><th>Level</th><th>Her</th><th>Nejlepší</th><th>Průměr</th><th>Chyby</th></tr>${perLevel}</table>` : ""}
     ${log ? `<h3>Průběh</h3><ul>${log}</ul>` : ""}
     <p style="color:#888;font-size:12px">Verze v iPadu: ${versions.join(", ") || "?"}<br>
       <a href="${SpreadsheetApp.getActiveSpreadsheet().getUrl()}">Všechna data</a></p>`;
 
-  MailApp.sendEmail({ to: EMAILS, name: "Počítadlo", subject: `Počítadlo: ${games_(finished.length)} dnes`, htmlBody: html });
+  const subject = `Počítadlo ${Utilities.formatDate(new Date(), TZ, "d. M.")}: ${games_(finished.length)}`;
+  MailApp.sendEmail({ to: EMAILS, name: "Počítadlo", subject, htmlBody: html });
+  return true;
 }
 
 function games_(n) {
@@ -149,6 +164,6 @@ function games_(n) {
 // Run once by hand to schedule the daily email.
 function setup() {
   ScriptApp.getProjectTriggers().forEach((t) => ScriptApp.deleteTrigger(t));
-  ScriptApp.newTrigger("hourlyCheck").timeBased().everyHours(1).create();
+  ScriptApp.newTrigger("check").timeBased().everyMinutes(15).create();
   getSheet_();
 }

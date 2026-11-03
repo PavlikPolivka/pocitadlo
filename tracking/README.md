@@ -2,7 +2,7 @@
 
 The app sends play events (app open, level start/finish/quit, time, mistakes)
 to a Google Apps Script web app. The script stores them in a Google Sheet and
-emails a daily summary (first hourly check after 19:00). It costs nothing and has no server to maintain.
+emails a daily summary between 19:00 and 19:15, covering everything since the previous one. It costs nothing and has no server to maintain.
 
 Nothing is sent when `NEXT_PUBLIC_TRACK_URL` is not set, e.g. in local dev.
 
@@ -13,7 +13,7 @@ Nothing is sent when `NEXT_PUBLIC_TRACK_URL` is not set, e.g. in local dev.
    folder and set `EMAILS` to the addresses that should get the report.
 3. Select the `setup` function and click **Run**. Approve the permissions
    (Sheets, sending email, triggers). This creates the `events` sheet and the
-   hourly trigger that sends the report once a day after 19:00.
+   15-minute trigger that sends the report once a day after 19:00.
 4. **Deploy → New deployment → Web app**: Execute as **Me**, Who has access
    **Anyone**. Copy the `/exec` URL.
 5. In Vercel → project → Settings → Environment Variables, add
