@@ -1,4 +1,4 @@
-const CACHE = "pocitadlo-v1";
+const CACHE = "pocitadlo-v2";
 const URLS = ["/", "/manifest.json"];
 
 self.addEventListener("install", (e) => {
@@ -15,9 +15,19 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
+// Network first so a new deploy shows up on the next launch; cache is the offline fallback.
 self.addEventListener("fetch", (e) => {
-  if (e.request.method !== "GET") return;
+  const url = new URL(e.request.url);
+  if (e.request.method !== "GET" || url.origin !== self.location.origin) return;
   e.respondWith(
-    caches.match(e.request).then((cached) => cached || fetch(e.request))
+    fetch(e.request)
+      .then((res) => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });

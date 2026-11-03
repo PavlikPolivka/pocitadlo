@@ -3,10 +3,11 @@ import { useEffect, useState, useCallback } from "react";
 import { LEVELS, Question } from "@/lib/levels";
 import { useTimer, formatTime } from "@/lib/timer";
 import NumberKeypad from "./NumberKeypad";
+import { track } from "@/lib/track";
 
 interface Props {
   levelId: string;
-  onComplete: (seconds: number) => void;
+  onComplete: (seconds: number, mistakes: number, wrong: string[]) => void;
   onBack: () => void;
 }
 
@@ -17,6 +18,7 @@ export default function GameScreen({ levelId, onComplete, onBack }: Props) {
   const [input, setInput] = useState("");
   const [shake, setShake] = useState(false);
   const [flash, setFlash] = useState<"" | "correct" | "wrong">("");
+  const [wrong, setWrong] = useState<string[]>([]);
   const { elapsed, reset } = useTimer(questions.length > 0);
 
   useEffect(() => {
@@ -24,6 +26,7 @@ export default function GameScreen({ levelId, onComplete, onBack }: Props) {
     setQuestions(level.generate());
     setCurrent(0);
     setInput("");
+    setWrong([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [levelId]);
 
@@ -37,13 +40,14 @@ export default function GameScreen({ levelId, onComplete, onBack }: Props) {
       setTimeout(() => {
         setFlash("");
         if (current + 1 >= questions.length) {
-          onComplete(elapsed);
+          onComplete(elapsed, wrong.length, wrong);
         } else {
           setCurrent((c) => c + 1);
           setInput("");
         }
       }, 400);
     } else {
+      setWrong((w) => [...w, `${q.a}${q.op}${q.b}=${userAnswer}`]);
       setShake(true);
       setFlash("wrong");
       setTimeout(() => {
@@ -52,7 +56,12 @@ export default function GameScreen({ levelId, onComplete, onBack }: Props) {
         setInput("");
       }, 600);
     }
-  }, [input, q, current, questions.length, elapsed, onComplete]);
+  }, [input, q, current, questions.length, elapsed, wrong, onComplete]);
+
+  function handleBack() {
+    track({ type: "quit", level: levelId, seconds: elapsed, question: current + 1, mistakes: wrong.length });
+    onBack();
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -77,7 +86,7 @@ export default function GameScreen({ levelId, onComplete, onBack }: Props) {
     <div className="min-h-screen bg-amber-50 flex flex-col">
       <header className="flex items-center px-5 pt-10 pb-4 gap-3">
         <button
-          onClick={onBack}
+          onClick={handleBack}
           className="text-2xl text-slate-400 active:text-slate-600 transition-colors p-1"
           aria-label="Zpět"
         >

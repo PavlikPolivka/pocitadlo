@@ -1,9 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import LevelSelectScreen from "@/components/LevelSelectScreen";
 import GameScreen from "@/components/GameScreen";
 import ResultsScreen from "@/components/ResultsScreen";
 import { getBestTime, saveBestTime } from "@/lib/storage";
+import { track } from "@/lib/track";
 
 type View = "levelSelect" | "game" | "results";
 
@@ -14,16 +15,22 @@ export default function Home() {
   const [isNewBest, setIsNewBest] = useState(false);
   const [previousBest, setPreviousBest] = useState<number | null>(null);
 
+  useEffect(() => {
+    track({ type: "open" });
+  }, []);
+
   function startLevel(levelId: string) {
+    track({ type: "start", level: levelId });
     setActiveLevel(levelId);
     setView("game");
   }
 
-  function handleComplete(seconds: number) {
+  function handleComplete(seconds: number, mistakes: number, wrong: string[]) {
     if (!activeLevel) return;
     const prev = getBestTime(activeLevel);
     setPreviousBest(prev);
     const newBest = saveBestTime(activeLevel, seconds);
+    track({ type: "finish", level: activeLevel, seconds, mistakes, wrong, best: newBest });
     setIsNewBest(newBest);
     setFinishedSeconds(seconds);
     setView("results");

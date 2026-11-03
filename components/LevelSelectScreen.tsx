@@ -55,6 +55,10 @@ export default function LevelSelectScreen({ onSelectLevel }: Props) {
           );
         })}
       </div>
+
+      <p className="pb-4 text-center text-xs text-slate-300">
+        verze {process.env.NEXT_PUBLIC_APP_VERSION}
+      </p>
     </div>
   );
 }
