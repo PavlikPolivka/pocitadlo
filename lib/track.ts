@@ -1,7 +1,8 @@
 // Sends play events to a Google Apps Script web app (see tracking/README.md).
 // Events are queued in localStorage so nothing is lost while the iPad is offline.
-// Only the installed app (home screen) is tracked, so website visits and
-// Vercel's deploy screenshots don't count.
+// Sessions outside the installed app (website visits, Vercel's deploy
+// screenshots) start with "web-"; the daily email leaves them out. They are
+// still sent, so a misdetected iPad never loses data.
 
 const URL = process.env.NEXT_PUBLIC_TRACK_URL;
 const QUEUE_KEY = "pocitadlo_events";
@@ -14,10 +15,18 @@ export type TrackEvent =
 
 type Queued = TrackEvent & { ts: string; session: string; version: string };
 
+function isInstalledApp() {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
 const session =
-  typeof crypto !== "undefined" && "randomUUID" in crypto
+  (typeof window !== "undefined" && !isInstalledApp() ? "web-" : "") +
+  (typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID().slice(0, 8)
-    : Math.random().toString(36).slice(2, 10);
+    : Math.random().toString(36).slice(2, 10));
 
 function readQueue(): Queued[] {
   try {
@@ -59,15 +68,8 @@ export async function flush() {
   }
 }
 
-function isInstalledApp() {
-  return (
-    window.matchMedia("(display-mode: standalone)").matches ||
-    (navigator as Navigator & { standalone?: boolean }).standalone === true
-  );
-}
-
 export function track(event: TrackEvent) {
-  if (!URL || typeof window === "undefined" || !isInstalledApp()) return;
+  if (!URL || typeof window === "undefined") return;
   writeQueue([
     ...readQueue(),
     {

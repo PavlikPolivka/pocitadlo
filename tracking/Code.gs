@@ -91,6 +91,8 @@ function dailyReport() {
   const events = values
     .map((r) => Object.fromEntries(HEADER.map((h, i) => [h, r[i]])))
     .filter((ev) => ev.ts instanceof Date && day_(ev.ts) === today)
+    // Website visits and deploy screenshots, not the installed app (see lib/track.ts).
+    .filter((ev) => !String(ev.session).startsWith("web-"))
     .sort((a, b) => a.ts - b.ts);
 
   if (events.length === 0) return; // no email on days she didn't play
