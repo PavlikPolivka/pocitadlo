@@ -1,9 +1,9 @@
 // Počítadlo tracking: receives events from the app, stores them in this
 // spreadsheet and emails a daily summary. Setup steps are in README.md.
 
-const EMAILS = "polivka.pavel@gmail.com, m.polivkova22@gmail.com";
+const EMAILS = "polivka.pavel@gmail.com, n.polivkova22@gmail.com";
 const TZ = "Europe/Prague";
-const REPORT_HOUR = 19; // daily email around 19:00
+const REPORT_HOUR = 19; // daily email on the first hourly check after 19:00
 const SHEET = "events";
 const HEADER = ["received", "ts", "session", "version", "type", "level", "seconds", "mistakes", "question", "best", "wrong"];
 const TYPES = ["open", "start", "finish", "quit"];
@@ -46,9 +46,11 @@ function doPost(e) {
   return ContentService.createTextOutput("ok");
 }
 
-// Opening the /exec URL in a browser shows this, to check the deployment works.
+// Opening the /exec URL in a browser shows this, to check the deployment and the schedule.
 function doGet() {
-  return ContentService.createTextOutput("Počítadlo tracking OK");
+  const triggers = ScriptApp.getProjectTriggers().map((t) => t.getHandlerFunction()).join(", ") || "NONE, run setup";
+  const last = PropertiesService.getScriptProperties().getProperty("lastReport") || "never";
+  return ContentService.createTextOutput(`Počítadlo tracking OK\ntriggers: ${triggers}\nlast report: ${last}`);
 }
 
 function getSheet_() {
@@ -70,7 +72,19 @@ function time_(d) {
   return Utilities.formatDate(d, TZ, "HH:mm");
 }
 
-// Runs daily from the trigger; can also be run by hand from the editor.
+// Runs every hour; sends today's report once, on the first run after REPORT_HOUR.
+// A missed run is caught up by the next one.
+function hourlyCheck() {
+  const now = new Date();
+  const props = PropertiesService.getScriptProperties();
+  const today = day_(now);
+  if (Number(Utilities.formatDate(now, TZ, "H")) < REPORT_HOUR) return;
+  if (props.getProperty("lastReport")?.startsWith(today)) return;
+  dailyReport();
+  props.setProperty("lastReport", `${today} ${time_(now)}`);
+}
+
+// Sends today's report now; can also be run by hand from the editor.
 function dailyReport() {
   const today = day_(new Date());
   const values = getSheet_().getDataRange().getValues().slice(1);
@@ -121,7 +135,7 @@ function dailyReport() {
     <p style="color:#888;font-size:12px">Verze v iPadu: ${versions.join(", ") || "?"}<br>
       <a href="${SpreadsheetApp.getActiveSpreadsheet().getUrl()}">Všechna data</a></p>`;
 
-  MailApp.sendEmail({ to: EMAILS, subject: `Počítadlo: ${games_(finished.length)} dnes`, htmlBody: html });
+  MailApp.sendEmail({ to: EMAILS, name: "Počítadlo", subject: `Počítadlo: ${games_(finished.length)} dnes`, htmlBody: html });
 }
 
 function games_(n) {
@@ -133,6 +147,6 @@ function games_(n) {
 // Run once by hand to schedule the daily email.
 function setup() {
   ScriptApp.getProjectTriggers().forEach((t) => ScriptApp.deleteTrigger(t));
-  ScriptApp.newTrigger("dailyReport").timeBased().everyDays(1).atHour(REPORT_HOUR).inTimezone(TZ).create();
+  ScriptApp.newTrigger("hourlyCheck").timeBased().everyHours(1).create();
   getSheet_();
 }
